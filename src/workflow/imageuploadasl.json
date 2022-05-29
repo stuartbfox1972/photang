@@ -1,0 +1,105 @@
+{
+  "Comment": "A description of my state machine",
+  "StartAt": "ContentModeration",
+  "States": {
+    "ContentModeration": {
+      "Type": "Task",
+      "Resource": "${ContentModeration}",
+      "OutputPath": "$.moderation",
+      "Parameters": {
+        "Payload.$": "$"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Choice"
+    },
+    "Choice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.moderation.allowed",
+          "BooleanEquals": true,
+          "Next": "SNSPublish"
+        }
+      ],
+      "Default": "Parallel"
+    },
+    "SNSPublish": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${HumanModeration}",
+        "Message.$": "$"
+      },
+      "End": true
+    },
+    "Parallel": {
+      "Type": "Parallel",
+      "End": true,
+      "Branches": [
+        {
+          "StartAt": "ExtractLabels",
+          "States": {
+            "ExtractLabels": {
+              "Type": "Task",
+              "Resource": "${ExtractLabels}",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "ExtractEXIF",
+          "States": {
+            "ExtractEXIF": {
+              "Type": "Task",
+              "Resource": "${ExtractExif}",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}

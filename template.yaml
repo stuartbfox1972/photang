@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'Core Photang Photo Processing'
+
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Architectures: 
+     - "arm64"
+    Runtime: python3.9
+    MemorySize: 128
+    Timeout: 30
+    Tracing: Active
+
+Resources:
+  ExtractExifFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: extractexif.lambda_handler
+      CodeUri: src/lambda/extractexif/
+      Description: Uses Python Pillow to detect exif info in images
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: Table
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:GetObject'
+              Resource: 'arn:aws:s3:::*'
+            - Effect: Allow
+              Action:
+                - 'dynamodb:GetItem'
+                - 'dynamodb:PutItem'
+                - 'dynamodb:Scan'
+                - 'dynamodb:UpdateItem'
+                - 'dynamodb:BatchWriteItem'
+              Resource:
+                'Fn::Join':
+                  - ''
+                  - - 'arn:aws:dynamodb:'
+                    - Ref: 'AWS::Region'
+                    - ':'
+                    - Ref: 'AWS::AccountId'
+                    - ':table/'
+                    - Ref: Table
+  ExtractLabelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: extractlabels.lambda_handler
+      CodeUri: src/lambda/extractlabels/
+      Description: Uses Rekognition to label entities in images
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: Table
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:GetObject'
+              Resource: 'arn:aws:s3:::*'
+            - Effect: Allow
+              Action:
+                - 'rekognition:DetectText'
+                - 'rekognition:DetectLabels'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'dynamodb:GetItem'
+                - 'dynamodb:PutItem'
+                - 'dynamodb:Scan'
+                - 'dynamodb:UpdateItem'
+                - 'dynamodb:BatchWriteItem'
+              Resource:
+                'Fn::Join':
+                  - ''
+                  - - 'arn:aws:dynamodb:'
+                    - Ref: 'AWS::Region'
+                    - ':'
+                    - Ref: 'AWS::AccountId'
+                    - ':table/'
+                    - Ref: Table
+                    
+  ContentModerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: contentmoderation.lambda_handler
+      CodeUri: src/lambda/contentmoderation/
+      Description: Uses Rekognition to classify image content
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: Table
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:GetObject'
+              Resource: 'arn:aws:s3:::*'
+            - Effect: Allow
+              Action:
+                - 'rekognition:DetectText'
+                - 'rekognition:DetectLabels'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'dynamodb:GetItem'
+                - 'dynamodb:PutItem'
+                - 'dynamodb:Scan'
+                - 'dynamodb:UpdateItem'
+                - 'dynamodb:BatchWriteItem'
+              Resource:
+                'Fn::Join':
+                  - ''
+                  - - 'arn:aws:dynamodb:'
+                    - Ref: 'AWS::Region'
+                    - ':'
+                    - Ref: 'AWS::AccountId'
+                    - ':table/'
+                    - Ref: Table
+                      
+  RunUploadStateMachine:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: runsuploadstatemachi.lambda_handler
+      CodeUri: src/lambda/contentmoderation/
+      Description: Run the Uploads State Machine
+      MemorySize: 128
+      Environment:
+        Variables:
+          STEP_FUNCTION_ARN: !GetAtt UploadStateMachine.Arn
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'states:StartExecution'
+              Resource: !GetAtt UploadStateMachine.Arn
+    Events:
+      UploadEvent:
+        Type: S3
+        Properties:
+          Bucket:
+            Ref: SrcBucket
+          Events:
+            - 's3:ObjectCreated:*'
+
+  SrcBucket:
+    Type: AWS::S3::Bucket
+    
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions: 
+        - 
+          AttributeName: "PK"
+          AttributeType: "S"
+        - 
+          AttributeName: "SK"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "PK"
+          KeyType: "HASH"
+        - 
+          AttributeName: "SK"
+          KeyType: "RANGE"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+        
+  HumanModerationTopic:
+    Type: AWS::SNS::Topic
+    #Properties:
+    #  TopicName: "HumanModerationTopic"
+      
+  MySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: stuart@stuartfox.ca
+      Protocol: email
+      TopicArn: !Ref HumanModerationTopic
+      
+  UploadStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: src/workflow/imageuploadasl.json
+      Tracing:
+        Enabled: true
+      DefinitionSubstitutions:
+        ContentModeration: !GetAtt ContentModerationFunction.Arn
+        ExtractExif: !GetAtt ExtractExifFunction.Arn
+        ExtractLabels: !GetAtt ExtractLabelsFunction.Arn
+        HumanModeration: !Ref HumanModerationTopic
+      Policies:
+          - Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'sns:Publish'
+                Resource:
+                  - !GetAtt ContentModerationFunction.Arn
+                  - !GetAtt ExtractLabelsFunction.Arn
+                  - !GetAtt ExtractExifFunction.Arn
+                  - !Ref HumanModerationTopic

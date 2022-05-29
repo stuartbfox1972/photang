@@ -1,0 +1,11 @@
+version = 0.1
+[dev]
+[dev.deploy]
+[dev.deploy.parameters]
+stack_name = "photang-app"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-r9pz3z0ndjdw"
+s3_prefix = "photang-app"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
