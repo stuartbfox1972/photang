@@ -8,8 +8,7 @@ def lambda_handler(event, context):
 
   response = sfn_client.start_execution(
     stateMachineArn=state_machine_arn,
-    name='test1',
-    input=json.dumps({ 'TransactionType': 'PURCHASE' })
+    input=json.dumps(event)
   )
 
   print(response)

@@ -39,6 +39,7 @@ def lambda_handler(event, context):
     '''
 
     # Get the object from the event.
+    
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
 
@@ -66,7 +67,7 @@ def lambda_handler(event, context):
                     Item={'PK': 'LABEL#' + rl, 'SK': 'IMAGE#' + key}
                 )
 
-        return 'Success'
+        return {"success": "true"}
     except Exception as e:
         #print("Error processing object {} from bucket {}. Event {}".format(key, bucket, json.dumps(event, indent=2)))
         print(e)

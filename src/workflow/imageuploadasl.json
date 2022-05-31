@@ -5,10 +5,6 @@
     "ContentModeration": {
       "Type": "Task",
       "Resource": "${ContentModeration}",
-      "OutputPath": "$.moderation",
-      "Parameters": {
-        "Payload.$": "$"
-      },
       "Retry": [
         {
           "ErrorEquals": [
@@ -21,14 +17,15 @@
           "BackoffRate": 2
         }
       ],
+      "ResultPath": "$.moderation",
       "Next": "Choice"
     },
     "Choice": {
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.moderation.allowed",
-          "BooleanEquals": true,
+          "Variable": "$.moderation.approved",
+          "StringEquals": "false",
           "Next": "SNSPublish"
         }
       ],
@@ -53,10 +50,6 @@
             "ExtractLabels": {
               "Type": "Task",
               "Resource": "${ExtractLabels}",
-              "OutputPath": "$.Payload",
-              "Parameters": {
-                "Payload.$": "$"
-              },
               "Retry": [
                 {
                   "ErrorEquals": [
@@ -79,10 +72,6 @@
             "ExtractEXIF": {
               "Type": "Task",
               "Resource": "${ExtractExif}",
-              "OutputPath": "$.Payload",
-              "Parameters": {
-                "Payload.$": "$"
-              },
               "Retry": [
                 {
                   "ErrorEquals": [
